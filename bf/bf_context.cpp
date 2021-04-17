@@ -881,6 +881,7 @@ ib_resources_t* BFContext::setup_send_udp_connection_with_client(const string& i
     string device_name = ib_device_from_netdev(interface.c_str());
     struct ibv_context *context = ibv_open_device_by_name(device_name);
 
+    // Allocate a protected domain for the RDMA device context
     struct ibv_pd *pd = ibv_alloc_pd(context);
     if (!pd) {
         std::cerr << "ibv_alloc_pd() failed" << std::endl;
@@ -889,6 +890,7 @@ ib_resources_t* BFContext::setup_send_udp_connection_with_client(const string& i
 
     struct ibv_mr *mr_send;
     char* send_buf = (char*) malloc(BF_TOTAL_DATA_FROM_HOST_SIZE);
+    // Registers a memory region associated with a PD
     mr_send = ibv_reg_mr(pd, send_buf, BF_TOTAL_DATA_FROM_HOST_SIZE, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
     if (!send_buf) {
         std::cerr << "ibv_reg_mr() failed for send_buf" << std::endl;
@@ -1363,10 +1365,13 @@ BFContext::BFContext(CONNECTION_TYPE connection_type, unsigned int host_port_num
 
 
 void BFContext::run_all() {
+    // The client metadata
 	client_md client_md_rbuf[BF_MAX_RECV_WQES];
 	memset(client_md_rbuf, 0, BF_MAX_RECV_WQES * sizeof(client_md));
-	
-	thread tsend(&BFContext::send_thread, this, _connection_type, _host_port_num, _client_port_num + 50, client_md_rbuf);	
+
+	// Run send_thread function on a separate thread
+	thread tsend(&BFContext::send_thread, this, _connection_type, _host_port_num, _client_port_num + 50, client_md_rbuf);
+	// Run recv_thread function on current threa
 	recv_thread(_connection_type, _host_port_num, _client_port_num, client_md_rbuf);
 	
 	tsend.join();
@@ -1588,8 +1593,11 @@ void BFContext::send_thread(CONNECTION_TYPE connection_type, unsigned int host_p
 
     std::cout << "Client connection type: " << connection_type << std::endl;
     std::cout << "BF responses to clients on port " << client_port_num << std::endl;
+    // Connect to client (Hardcode interface name "enp3s0f0")
+    // Register a buffer that can be accessed by RDMA device
     ib_resources_t* client_ib_resources = setup_connection_with_client(_send_connection_type, "enp3s0f0", client_port_num);
 
+    // Then connect to host
     std::cout << "Connect to Host" << std::endl;
 	int host_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (host_fd < 0) {
@@ -1598,6 +1606,7 @@ void BFContext::send_thread(CONNECTION_TYPE connection_type, unsigned int host_p
     }
 
     struct sockaddr_in server_addr;
+    // Hardcode address "192.168.0.20"
     server_addr.sin_addr.s_addr = inet_addr("192.168.0.20");
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(host_port_num);
