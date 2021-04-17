@@ -359,6 +359,7 @@ ib_resources_t* BFContext::setup_notifyQP_from_Host(ib_resources_t* client_ib_re
 	ibv_pd* pd = client_ib_resources->pd;
 	struct ib_resources_t *ib_resources = (struct ib_resources_t *)malloc(sizeof(struct ib_resources_t));
 
+	// Register recv buffer
 	struct ibv_mr *mr_recv;
 	char *recv_buf = (char*) malloc(2 * _workers_num * sizeof(unsigned int));
 	for(int i = 0 ; i < _workers_num ; i++) {
@@ -374,6 +375,7 @@ ib_resources_t* BFContext::setup_notifyQP_from_Host(ib_resources_t* client_ib_re
 		exit(1);
 	}
 
+	// Register send buffer
 	struct ibv_mr *mr_send;
 	char *send_buf = (char*) malloc(2 * _workers_num * sizeof(unsigned int));
 	for(int i = 0 ; i < _workers_num ; i++) {
@@ -388,12 +390,14 @@ ib_resources_t* BFContext::setup_notifyQP_from_Host(ib_resources_t* client_ib_re
 		exit(1);
 	}
 
+	// Create recv completion queue
 	struct ibv_cq *recv_cq = ibv_create_cq(context, BF_RECV_CQ_SIZE, NULL, NULL, 0);
 	if (!recv_cq) {
 		std::cerr << "ibv_create_cq() failed" << std::endl;
 		exit(1);
 	}
 
+	// Create send completion queue
 	struct ibv_cq *send_cq = ibv_create_cq(context, BF_SEND_CQ_SIZE, NULL, NULL, 0);
 	if (!send_cq) {
 		std::cerr << "ibv_create_cq() failed" << std::endl;
@@ -654,9 +658,12 @@ ib_resources_t* BFContext::setup_readQP_from_Host(ib_resources_t* client_ib_reso
 
 	struct ib_resources_t *ib_resources = (struct ib_resources_t *)malloc(sizeof(struct ib_resources_t));
 
+	// Client memory region
 	struct ibv_mr *mr_recv = client_ib_resources->lmr_send;
+	// Client buffer
 	char *recv_buf = client_ib_resources->lsend_buf;
 
+	// Create a completion queue for an RDMA device context
 	struct ibv_cq *send_cq = ibv_create_cq(context, BF_SEND_CQ_SIZE, NULL, NULL, 0);
 	if (!send_cq) {
 		std::cerr << "ERROR: ibv_create_cq() failed" << std::endl;
@@ -672,6 +679,7 @@ ib_resources_t* BFContext::setup_readQP_from_Host(ib_resources_t* client_ib_reso
 	qp_init_attr.cap.max_recv_wr = 0;
 	qp_init_attr.cap.max_send_sge = 1;
 	qp_init_attr.cap.max_recv_sge = 0;
+	// Creates a Queue Pair (QP) associated with a Protection Domain
 	struct ibv_qp *qp = ibv_create_qp(pd, &qp_init_attr);
 	if (!qp) {
 		std::cerr << "ibv_create_qp() failed errno=" << errno << std::endl;
@@ -689,9 +697,11 @@ ib_resources_t* BFContext::setup_readQP_from_Host(ib_resources_t* client_ib_reso
 	struct ib_info_t my_info;
 	my_info.lid = port_attr.lid;
 	my_info.qpn = qp->qp_num;
+	// Key for remote access
 	my_info.mkey_data_buffer = mr_recv->rkey;
 	my_info.addr_data_buffer = (uintptr_t)mr_recv->addr;
 	int gid_index = get_gid_index(context);
+	// Return the value of an index the GID table of an RDMA device port's
 	if (ibv_query_gid(context, 1, gid_index, &(my_info.gid) )) {
 		std::cerr << "ibv_query_gid failed for gid " << gid_index << std::endl;
 		exit(1);
@@ -709,6 +719,7 @@ ib_resources_t* BFContext::setup_readQP_from_Host(ib_resources_t* client_ib_reso
 		exit(1);
 	}
 
+	// Record the client data and response buffer
 	ib_resources->rmr_recv_key = client_info.mkey_data_buffer;
 	ib_resources->rmr_recv_addr = client_info.addr_data_buffer;
 	ib_resources->rmr_send_key = client_info.mkey_response_buffer;
@@ -1616,8 +1627,11 @@ void BFContext::send_thread(CONNECTION_TYPE connection_type, unsigned int host_p
     }
     std::cout << "BlueField is connected to Host,Data can be exchanged." << std::endl;
 
+    // Record host data / response buffer
     ib_resources_t* host_ib_resources = setup_readQP_from_Host(client_ib_resources, host_fd);
     std::cout << "Host read data QP is established" << std::endl;
+
+    // Get notify buffer
     ib_resources_t* notify_ib_resources = setup_notifyQP_from_Host(client_ib_resources, host_fd);
     std::cout << "Host notify QP is established" << std::endl;
 
