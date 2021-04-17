@@ -53,6 +53,7 @@ struct send_wr_t {
     ibv_send_wr* write_wr;
 };
 
+// Metadata of client (padding to 64 bytes)
 struct client_md {
 	bool _valid;
     struct sockaddr_in _client_addr;

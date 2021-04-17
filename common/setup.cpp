@@ -37,6 +37,7 @@ double static inline get_time_msec(void) {
 struct ibv_context *ibv_open_device_by_name(const std::string& device_name)
 {
     int num_devices = 0;
+    // Returns a NULL=terminated array of RDMA devices currently available
     struct ibv_device **devices_list = ibv_get_device_list(&num_devices);
     if(!devices_list){
             printf("ERROR: ibv_get_device_list() failed\n");
