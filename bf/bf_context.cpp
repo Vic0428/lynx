@@ -535,6 +535,7 @@ ib_resources_t* BFContext::setup_writeQP_to_Host(ib_resources_t* client_ib_resou
     struct ibv_mr *mr_recv = client_ib_resources->lmr_recv;
     char *recv_buf = client_ib_resources->lrecv_buf;
 
+    // Create a completion queue
     struct ibv_cq *send_cq = ibv_create_cq(context, BF_SEND_CQ_SIZE, NULL, NULL, 0);
     if (!send_cq) {
         std::cerr << "ERROR: ibv_create_cq() failed" << std::endl;
@@ -574,6 +575,7 @@ ib_resources_t* BFContext::setup_writeQP_to_Host(ib_resources_t* client_ib_resou
         std::cerr << "ibv_query_gid failed for gid " << gid_index << std::endl;
         exit(1);
     }
+    // Exchange client info
     ret = send(sfd, &my_info, sizeof(struct ib_info_t), 0);
     if (ret < 0) {
         perror("setup_writeQP_to_Host send");
@@ -592,6 +594,7 @@ ib_resources_t* BFContext::setup_writeQP_to_Host(ib_resources_t* client_ib_resou
     ib_resources->rmr_send_key = client_info.mkey_response_buffer;
     ib_resources->rmr_send_addr = client_info.addr_response_buffer;
 
+    // qp: RESET -> INIT
     struct ibv_qp_attr qp_attr;
     memset(&qp_attr, 0, sizeof(struct ibv_qp_attr));
     qp_attr.qp_state = IBV_QPS_INIT;
@@ -604,6 +607,8 @@ ib_resources_t* BFContext::setup_writeQP_to_Host(ib_resources_t* client_ib_resou
         exit(1);
     }
 
+
+    // qp: INIT -> RTR
     memset(&qp_attr, 0, sizeof(struct ibv_qp_attr));
     qp_attr.qp_state = IBV_QPS_RTR;
     qp_attr.path_mtu = IBV_MTU_4096;
@@ -626,6 +631,8 @@ ib_resources_t* BFContext::setup_writeQP_to_Host(ib_resources_t* client_ib_resou
         std::cerr << "ibv_modify_qp() to RTR failed ret= " << ret << std::endl;
         exit(1);
     }
+
+    // qp: RTR -> RTS
     memset(&qp_attr, 0, sizeof(struct ibv_qp_attr));
     qp_attr.qp_state = IBV_QPS_RTS;
     qp_attr.sq_psn = 0;
