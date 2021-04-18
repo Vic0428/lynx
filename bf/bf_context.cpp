@@ -1594,10 +1594,15 @@ void BFContext::recv_loop(client_md* client_md_rbuf, ib_resources_t* host_ib_res
 	}
 	while(true) {
 		unsigned int worker_id = get_free_worker();
+		// Receive request data and put it to the recv_buffer on BF
 		if(poll_request_from_client(client_md_rbuf, client_ib_resources, rbuf_index[worker_id]) == 0) {
 			continue;
 		}
+
+		// Use RDMA data to send recv_buffer on BF to GPU
         copy_data_to_host(host_ib_resources,rbuf_index[worker_id], rdma_write_wr_list);
+
+
 		rbuf_index[worker_id] = rbuf_index[worker_id] + _workers_num;
 		if(rbuf_index[worker_id] >= BF_MAX_RECV_WQES) {
 			rbuf_index[worker_id] = rbuf_index[worker_id] % BF_MAX_RECV_WQES;
