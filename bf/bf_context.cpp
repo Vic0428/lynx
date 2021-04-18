@@ -706,6 +706,8 @@ ib_resources_t* BFContext::setup_readQP_from_Host(ib_resources_t* client_ib_reso
 		std::cerr << "ibv_query_gid failed for gid " << gid_index << std::endl;
 		exit(1);
 	}
+
+	// Exchange information with client
 	ret = send(sfd, &my_info, sizeof(struct ib_info_t), 0);
 	if (ret < 0) {
 		perror("setup_dQP send");
@@ -1599,6 +1601,7 @@ void BFContext::recv_loop(client_md* client_md_rbuf, ib_resources_t* host_ib_res
 
 
 void BFContext::send_thread(CONNECTION_TYPE connection_type, unsigned int host_port_num, unsigned int client_port_num, client_md* client_md_rbuf) {
+    // This sleep function is to make sure that recv_thread first connect to bf_host
 	sleep(1);
     std::cout << "*** send_thread ***" << std::endl;
 

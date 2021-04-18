@@ -237,6 +237,7 @@ ib_resources_t* hostContext::setup_recv_data_connection(const string& interface,
     }
 
     string device_name = ib_device_from_netdev(interface.c_str());
+    // Get device context and protection domain
     struct ibv_context *context = ibv_open_device_by_name(device_name);
     struct ibv_pd *pd = ibv_alloc_pd(context);
     if (!pd) {
@@ -245,16 +246,19 @@ ib_resources_t* hostContext::setup_recv_data_connection(const string& interface,
     }
 	
 	struct ibv_mr *mr_recv;
+    // Allocate receive buffer on GPU memory and init it
     char *recv_buf;
     CUDA_CHECK(cudaMalloc(&recv_buf,HOST_TOTAL_DATA_FROM_CLIENT_SIZE));
     CUDA_CHECK(cudaMemset(recv_buf, 0, HOST_TOTAL_DATA_FROM_CLIENT_SIZE));
 //    printf("ib_resources Data: recv_buf=%p size=%d\n",recv_buf,HOST_TOTAL_DATA_FROM_CLIENT_SIZE);
+    // Register a memory region
     mr_recv = ibv_reg_mr(pd, recv_buf, HOST_TOTAL_DATA_FROM_CLIENT_SIZE, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
     if (!mr_recv) {
         std::cerr << "ibv_reg_mr() failed for data_for_host" << std::endl;
         exit(1);
     }
 
+    // Create a completion queue
     struct ibv_cq *recv_cq = ibv_create_cq(context, HOST_RECV_CQ_SIZE, NULL, NULL, 0);
     if (!recv_cq) {
         printf("ERROR: ibv_create_cq() failed\n");
@@ -270,6 +274,7 @@ ib_resources_t* hostContext::setup_recv_data_connection(const string& interface,
     qp_init_attr.cap.max_recv_wr = HOST_MAX_RECV_WQES;
     qp_init_attr.cap.max_send_sge = 0;
     qp_init_attr.cap.max_recv_sge = 1;
+    // Create a queue pair
     struct ibv_qp *qp = ibv_create_qp(pd, &qp_init_attr);
     if (!qp) {
         std::cerr << "ibv_create_qp() failed errno= " << errno << std::endl;
@@ -284,6 +289,7 @@ ib_resources_t* hostContext::setup_recv_data_connection(const string& interface,
     }
 
     struct ib_info_t my_info;
+    // Store our qp information (local id / qp_number)
     my_info.lid = port_attr.lid;
     my_info.qpn = qp->qp_num;
     my_info.mkey_data_buffer = mr_recv->rkey;
@@ -294,6 +300,7 @@ ib_resources_t* hostContext::setup_recv_data_connection(const string& interface,
         exit(1);
     }
 
+    // Exchange information with client
     ret = send(sfd, &my_info, sizeof(struct ib_info_t), 0);
     if (ret < 0) {
         std::cerr << "send" << std::endl;
@@ -307,6 +314,7 @@ ib_resources_t* hostContext::setup_recv_data_connection(const string& interface,
         exit(1);
     }
 
+    // qp: RESET -> INIT
     struct ibv_qp_attr qp_attr;
     memset(&qp_attr, 0, sizeof(struct ibv_qp_attr));
     qp_attr.qp_state = IBV_QPS_INIT;
@@ -319,6 +327,7 @@ ib_resources_t* hostContext::setup_recv_data_connection(const string& interface,
         exit(1);
     }
 
+    // qp: INIT -> RTR
     memset(&qp_attr, 0, sizeof(struct ibv_qp_attr));
     qp_attr.qp_state = IBV_QPS_RTR;
     qp_attr.path_mtu = IBV_MTU_4096;
@@ -341,6 +350,8 @@ ib_resources_t* hostContext::setup_recv_data_connection(const string& interface,
         std::cerr << "ibv_modify_qp() to RTR failed ret= " << ret << std::endl;
         exit(1);
     }
+
+    // qp : RTR -> RTS
     memset(&qp_attr, 0, sizeof(struct ibv_qp_attr));
     qp_attr.qp_state = IBV_QPS_RTS;
     qp_attr.sq_psn = 0;
@@ -519,7 +530,8 @@ hostContext::hostContext(const string& interface, unsigned int workers_num, unsi
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(server_tcp_port);
-	
+
+    // TCP server listens on a given port
 	if (bind(lfd, (struct sockaddr *)&server_addr, sizeof(struct sockaddr_in)) < 0) {
     	std::cerr << "bind lfd" << std::endl;
         exit(1);
@@ -532,6 +544,7 @@ hostContext::hostContext(const string& interface, unsigned int workers_num, unsi
       	std::cerr << "accept sfd1" << std::endl;
        	exit(1);
    	}
+    // Accept incoming connection
 	std::cout << "BlueField is connected" << std::endl;
 	std::cout << "create RX Queue " << std::endl;
     recv_data_ib_resources = setup_recv_data_connection(interface,sfd);
