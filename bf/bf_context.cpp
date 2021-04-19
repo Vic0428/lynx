@@ -1520,6 +1520,7 @@ void BFContext::recv_thread(CONNECTION_TYPE connection_type, unsigned int host_p
 	std::cout << "closing connection with Host" << std::endl;
 	close(host_fd);
 
+	// Prepare the write list and write request entry
     recv_wr_t* recv_wr = prepare_recv_qps(host_ib_resources, client_ib_resources);
 
 	recv_loop(client_md_rbuf, host_ib_resources, client_ib_resources, recv_wr->rdma_write_wr_list);
@@ -1603,6 +1604,7 @@ void BFContext::recv_loop(client_md* client_md_rbuf, ib_resources_t* host_ib_res
         copy_data_to_host(host_ib_resources,rbuf_index[worker_id], rdma_write_wr_list);
 
 
+		// Update index
 		rbuf_index[worker_id] = rbuf_index[worker_id] + _workers_num;
 		if(rbuf_index[worker_id] >= BF_MAX_RECV_WQES) {
 			rbuf_index[worker_id] = rbuf_index[worker_id] % BF_MAX_RECV_WQES;
