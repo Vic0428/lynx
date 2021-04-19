@@ -123,7 +123,9 @@ inline void BFContext::notify_host(ib_resources_t* notify_ib_resources, ibv_send
 
 inline bool BFContext::pull_notification_from_host(ib_resources_t* notify_ib_resources, ibv_send_wr* read_wr, unsigned int *wr_id, unsigned int worker_id) {
 
+    // Producer
 	int pi_val = *(((int*)notify_ib_resources->lrecv_buf) + worker_id);
+	// Consumer
     int ci_val = *(((int*)notify_ib_resources->lsend_buf + _workers_num) + worker_id);
 	//int ci_val = *wr_id;
 
@@ -296,6 +298,7 @@ inline void BFContext::send_udp_response(client_md* client_md_rbuf, ib_resources
 //          std::cerr << "got CQE with error " << wc[i].status << " (line " << __LINE__ << ")" << std::endl;
 //          exit(1);
 //      }
+        // RDMA read operation has been done
 		assert(wc[i].opcode == IBV_WC_RDMA_READ);
 
 //		std::cout << "sending msg wc[i].wr_id " << wc[i].wr_id << std::endl;
@@ -304,8 +307,13 @@ inline void BFContext::send_udp_response(client_md* client_md_rbuf, ib_resources
 //		std::cout << "rbuf_index " << rbuf_index << std::endl;
 		assert(client_md_rbuf[rbuf_index]._valid == true);
 //		if(rbuf_index == 1) std::cout << "rbuf_index to be released " << rbuf_index << "worker_id " << (rbuf_index + wrap_around * BF_MAX_RECV_WQES) % _workers_num << std::endl;
+
+
+        // Use notification queue to notify host
 		int worker_id = get_worker_id_and_notify_host(notify_ib_resources, send_wr, rbuf_index);
 		update_ci(notify_ib_resources,worker_id);
+
+
 //		update_ci(notify_ib_resources,(rbuf_index + wrap_around * BF_MAX_RECV_WQES) % _workers_num);
   //      notify_ib_resources->resp_sent += requests_num;
 		
@@ -336,11 +344,14 @@ inline void BFContext::send_udp_response(client_md* client_md_rbuf, ib_resources
 			printf("%x ",send_buf[i]);
 		} 
 		printf("\n");*/
+
+        // Send the udp response back to the client
 	    int ret=sendto(client_ib_resources->client_fd, send_buf, HOST_SEND_MSG_SIZE, MSG_CONFIRM, (struct sockaddr *)&(client_md_rbuf[rbuf_index]._client_addr), client_md_rbuf[rbuf_index]._client_addr_len);
     	if (ret < 0) {
         	perror("send udp response");
 	        exit(1);
     	}
+    	// Reset client metadata buffer
 		client_md_rbuf[rbuf_index]._valid = false;
 		requests_num++;
     }
@@ -1302,6 +1313,7 @@ struct send_wr_t* BFContext::prepare_send_qps(ib_resources_t* host_ib_resources,
 	send_wr->write_wr->wr.rdma.rkey = notify_ib_resources->rmr_recv_key;
     
 
+	// Setup RDMA read request to read host response
 	send_wr->rdma_read_sg_list = (ibv_sge*) malloc(BF_MAX_SEND_WQES * sizeof(ibv_sge));
 	memset(send_wr->rdma_read_sg_list, 0, BF_MAX_SEND_WQES * sizeof(struct ibv_sge));
 	send_wr->rdma_read_wr_list = (ibv_send_wr*)malloc(BF_MAX_SEND_WQES * sizeof(ibv_send_wr));
@@ -1674,9 +1686,11 @@ void BFContext::send_loop(client_md* client_md_rbuf, ib_resources_t* host_ib_res
 		for(int i = 0 ; i < _workers_num ; i++) {
 			bool should_send = pull_notification_from_host(notify_ib_resources, send_wr->read_wr, &wr_id[i], i);	
 //			if(should_send) std::cout << "worker_id = " << i << " send id " << wr_id[i] << " wrap_around " << notify_ib_resources->wrap_around << std::endl;
+            // post_rdma == true -> send RDMA read request
 			send_response(client_md_rbuf, host_ib_resources, notify_ib_resources, client_ib_resources, send_wr, wr_id[i], last_wr_id[i], i,true);
 	        last_wr_id[i] = wr_id[i];
 		}
+		// post_rdma == false -> send result back to client
 		send_response(client_md_rbuf, host_ib_resources, notify_ib_resources, client_ib_resources, send_wr, 0, 0, 0, false);
 
 /*	
